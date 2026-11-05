@@ -1,0 +1,10 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.cache/
+.shots/
+.print-*.html
+.book.html
+.fig-*.html
+.DS_Store

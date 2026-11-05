@@ -1,0 +1,23 @@
+{
+  "title": "Paged KV-cache drills (example)",
+  "brand": "Paged KV drills",
+  "kicker": "Example drills project",
+  "lede": "Two one-hour drills that rebuild the heart of vLLM v1's memory management and scheduling on CPU: a ref-counted block pool with prefix caching, and one step of a continuous-batching scheduler with chunked prefill.",
+  "lang": "en",
+  "slug": "paged-kv-example",
+  "pins": {
+    "vllm": {"repo": "vllm-project/vllm", "sha": "5e65d6b2adf64d1548c3b25ccc52ad55fcfe8044", "local": "~/development/vllm"}
+  },
+  "tracks": [
+    {"id": "A", "title": "Track A · Memory and scheduling", "desc": "The two data structures every LLM serving engine is built around."}
+  ],
+  "drills": [
+    {"id": "A1", "stem": "a1_block_pool", "title": "BlockPool: ref counts, LRU free queue, prefix cache", "minutes": 50, "difficulty": "medium", "track": "A",
+     "given": ["NoFreeBlocks", "hash_blocks", "BlockPool.num_free_blocks", "BlockPool.ref_count", "BlockPool.cached_block"]},
+    {"id": "A2", "stem": "a2_token_budget_scheduler", "title": "Scheduler step: token budget, chunked prefill, FCFS admission", "minutes": 45, "difficulty": "medium", "track": "A",
+     "given": ["Request"]}
+  ],
+  "knowledge": ["overview"],
+  "pdf": "paged-kv-drills.pdf",
+  "quality": {"flows": 1, "steps": 1, "analogies": 1, "hints": 3}
+}

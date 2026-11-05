@@ -1,0 +1,730 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>A1 · BlockPool: ref counts, LRU free queue, prefix cache</title>
+
+<style>
+/* ai-infra-dev-skills · shared page styles (reports, knowledge pages, hint pages). No dependencies. */
+:root {
+  --bg: #f7f6f2; --surface: #ffffff; --surface-2: #f0eee8; --border: #dedad0;
+  --text: #22211e; --muted: #6b675e; --accent: #2f6fdb; --accent-soft: #e3ecfb;
+  --code-bg: #f3f1ea; --hl: #ffb020; --hl-soft: #fff1d6;
+  --l1: #2e8b57; --l1-soft: #e4f3ea; --l2: #b7791f; --l2-soft: #fbf0dc; --l3: #c0392b; --l3-soft: #fbe5e2;
+  --ok: #2e8b57; --bad: #c0392b; --warn: #b7791f; --idea: #7a4fc4;
+  --tk-kw: #8a3ab9; --tk-str: #2f7d32; --tk-num: #b5541c; --tk-com: #8a867c; --tk-fn: #2457b8; --tk-type: #0f7b8a;
+  --shadow: 0 1px 2px rgba(0,0,0,.05), 0 2px 8px rgba(0,0,0,.04); --radius: 10px;
+  --font: "PingFang SC", "Hiragino Sans GB", "Noto Sans CJK SC", "Source Han Sans SC", "Microsoft YaHei",
+          system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --mono: "JetBrains Mono", "SFMono-Regular", "Cascadia Code", Menlo, Consolas, "Noto Sans Mono CJK SC", monospace;
+  --left: 268px; --right: 220px; color-scheme: light;
+  /* diagram palette */
+  --f-dot: #d9d5cb; --f-acc: #2f6fdb; --f-acc-bg: #e3ecfb; --f-warn: #b7791f; --f-warn-bg: #fbf0dc; --f-pass: #2e8b57;
+  --f-pass-bg: #e4f3ea; --f-vio: #7a4fc4; --f-vio-bg: #efe8fb; --f-teal: #0f7b8a; --f-teal-bg: #e0f2f4;
+  --f-todo: #c0392b; --f-todo-bg: #fbe5e2;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #17181b; --surface: #1f2125; --surface-2: #26282d; --border: #363a41; --text: #e6e4df; --muted: #a19d94;
+  --accent: #7aa7ff; --accent-soft: #23314d; --code-bg: #1b1d21; --hl: #ffc14d; --hl-soft: #3a2f14;
+  --l1: #5cc98b; --l1-soft: #1d3327; --l2: #e6b25c; --l2-soft: #3a2f1b; --l3: #f08070; --l3-soft: #3d2320;
+  --ok: #5cc98b; --bad: #f08070; --warn: #e6b25c; --idea: #b79cf0;
+  --tk-kw: #d19ef0; --tk-str: #8fd18f; --tk-num: #f0a35e; --tk-com: #7f7b73; --tk-fn: #8cb4ff; --tk-type: #5cc9d6;
+  --shadow: 0 1px 2px rgba(0,0,0,.4); color-scheme: dark;
+  --f-dot: #30333a; --f-acc: #7aa7ff; --f-acc-bg: #23314d; --f-warn: #e6b25c; --f-warn-bg: #3a2f1b; --f-pass: #5cc98b;
+  --f-pass-bg: #1d3327; --f-vio: #b79cf0; --f-vio-bg: #2c2440; --f-teal: #5cc9d6; --f-teal-bg: #163238;
+  --f-todo: #f08070; --f-todo-bg: #3d2320; } }
+:root[data-theme="dark"] {
+  --bg: #17181b; --surface: #1f2125; --surface-2: #26282d; --border: #363a41; --text: #e6e4df; --muted: #a19d94;
+  --accent: #7aa7ff; --accent-soft: #23314d; --code-bg: #1b1d21; --hl: #ffc14d; --hl-soft: #3a2f14;
+  --l1: #5cc98b; --l1-soft: #1d3327; --l2: #e6b25c; --l2-soft: #3a2f1b; --l3: #f08070; --l3-soft: #3d2320;
+  --ok: #5cc98b; --bad: #f08070; --warn: #e6b25c; --idea: #b79cf0;
+  --tk-kw: #d19ef0; --tk-str: #8fd18f; --tk-num: #f0a35e; --tk-com: #7f7b73; --tk-fn: #8cb4ff; --tk-type: #5cc9d6;
+  --shadow: 0 1px 2px rgba(0,0,0,.4); color-scheme: dark;
+  --f-dot: #30333a; --f-acc: #7aa7ff; --f-acc-bg: #23314d; --f-warn: #e6b25c; --f-warn-bg: #3a2f1b; --f-pass: #5cc98b;
+  --f-pass-bg: #1d3327; --f-vio: #b79cf0; --f-vio-bg: #2c2440; --f-teal: #5cc9d6; --f-teal-bg: #163238;
+  --f-todo: #f08070; --f-todo-bg: #3d2320; }
+
+* { box-sizing: border-box; }
+html { scroll-padding-top: 16px; -webkit-text-size-adjust: 100%; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 15.5px/1.78 var(--font); overflow-x: hidden; }
+a { color: var(--accent); text-decoration: none; } a:hover { text-decoration: underline; }
+.muted { color: var(--muted); } .small { font-size: 13px; }
+.btn { appearance: none; border: 1px solid var(--border); background: var(--surface); color: var(--text); border-radius: 8px;
+  padding: 3px 10px; font: inherit; font-size: 13px; cursor: pointer; line-height: 1.5; }
+.btn:hover:not(:disabled) { border-color: var(--accent); } .btn:disabled { opacity: .4; cursor: default; }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+/* ---------- layout: left nav · content · right outline (code-wiki style) ---------- */
+.layout { display: grid; grid-template-columns: var(--left) minmax(0, 1fr); }
+.layout.has-right { grid-template-columns: var(--left) minmax(0, 1fr) var(--right); }
+.sidebar, .outline { position: sticky; top: 0; height: 100vh; height: 100dvh; overflow-y: auto; scrollbar-width: thin; }
+.sidebar { border-right: 1px solid var(--border); padding: 18px 10px 40px 16px; font-size: 13.2px; }
+.sidebar .brand { display: block; font-weight: 800; font-size: 15px; margin: 0 0 12px 6px; color: var(--text); }
+.sidebar a { display: block; padding: 2px 8px; border-radius: 6px; color: var(--text); line-height: 1.5; }
+.sidebar a:hover, .outline a:hover { background: var(--surface-2); text-decoration: none; }
+.sidebar .nav-group { margin: 14px 0 2px 8px; font-size: 11.5px; font-weight: 700; letter-spacing: .06em; color: var(--muted); text-transform: uppercase; }
+.sidebar a.nav-l2 { font-weight: 650; margin-top: 6px; }
+.sidebar a.nav-l3 { padding-left: 20px; color: var(--muted); font-size: 12.6px; }
+.sidebar a.cur, .outline a.cur { background: var(--accent-soft); color: var(--accent); }
+.sidebar a .nid { font: 700 12px var(--mono); color: var(--accent); margin-right: 6px; }
+.sidebar a.done .nid::after { content: " ✓"; color: var(--ok); }
+.outline { border-left: 1px solid var(--border); padding: 22px 12px 40px; font-size: 12.6px; }
+.outline .ttl { font-weight: 700; color: var(--muted); font-size: 11.5px; letter-spacing: .06em; text-transform: uppercase; margin: 0 0 8px 6px; }
+.outline a { display: block; padding: 2px 6px; border-radius: 6px; color: var(--muted); line-height: 1.45; }
+.outline a.o3 { padding-left: 16px; }
+main { max-width: 940px; padding: 28px 40px 90px; min-width: 0; }
+.cover { padding: 30px 0 14px; border-bottom: 1px solid var(--border); margin-bottom: 10px; }
+.cover .kicker { font: 700 12px var(--mono); letter-spacing: .12em; color: var(--accent); text-transform: uppercase; }
+.cover h1 { font-size: 33px; line-height: 1.25; margin: 10px 0 10px; letter-spacing: -.01em; }
+.cover .lede { color: var(--muted); margin: 6px 0; font-size: 16px; }
+.cover .meta { font: 12.5px var(--mono); color: var(--muted); }
+.pager { display: flex; justify-content: space-between; gap: 12px; margin: 48px 0 0; padding-top: 14px; border-top: 1px solid var(--border); }
+.theme-btn { position: fixed; right: 16px; bottom: 16px; z-index: 20; border: 1px solid var(--border); background: var(--surface);
+  color: var(--text); border-radius: 999px; padding: 6px 12px; font: 13px var(--font); cursor: pointer; box-shadow: var(--shadow); }
+
+/* ---------- typography ---------- */
+h2 { font-size: 25px; margin: 60px 0 12px; padding-top: 10px; border-top: 2px solid var(--text); letter-spacing: -.01em; }
+h3 { font-size: 19px; margin: 34px 0 8px; } h4 { font-size: 16px; margin: 22px 0 6px; }
+p, li { text-wrap: pretty; }
+code { font: 0.88em var(--mono); background: var(--code-bg); padding: 1px 5px; border-radius: 5px; overflow-wrap: anywhere; }
+pre { background: var(--code-bg); border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px; overflow-x: auto; line-height: 1.55; }
+pre code { background: none; padding: 0; font-size: 12.8px; overflow-wrap: normal; }
+a.src { font: 0.86em var(--mono); background: var(--accent-soft); padding: 1px 6px; border-radius: 5px; overflow-wrap: anywhere; }
+a.src::after { content: " ↗"; font-size: .85em; }
+.table-wrap { overflow-x: auto; margin: 12px 0; }
+table { border-collapse: collapse; width: 100%; font-size: 14px; background: var(--surface); }
+th, td { border: 1px solid var(--border); padding: 6px 10px; vertical-align: top; text-align: left; }
+th { background: var(--surface-2); font-weight: 650; }
+th:first-child, td:first-child { min-width: 5.5em; }
+blockquote { margin: 12px 0; padding: 4px 14px; border-left: 3px solid var(--border); color: var(--muted); }
+hr { border: 0; border-top: 1px solid var(--border); margin: 28px 0; }
+
+/* ---------- callouts ---------- */
+.callout { margin: 16px 0; padding: 10px 16px; border-radius: var(--radius); background: var(--surface); border: 1px solid var(--border); border-left-width: 4px; }
+.callout > :first-child { margin-top: 4px; } .callout > :last-child { margin-bottom: 4px; }
+.callout-title { font-weight: 700; margin-bottom: 2px; }
+.callout.key, .callout.info { border-left-color: var(--accent); background: color-mix(in srgb, var(--accent) 6%, var(--surface)); }
+.callout.key > .callout-title, .callout.info > .callout-title { color: var(--accent); }
+.callout.warn { border-left-color: var(--warn); background: color-mix(in srgb, var(--warn) 8%, var(--surface)); }
+.callout.warn > .callout-title { color: var(--warn); }
+.callout.ok { border-left-color: var(--ok); background: color-mix(in srgb, var(--ok) 7%, var(--surface)); }
+.callout.idea { border-left-color: var(--idea); background: color-mix(in srgb, var(--idea) 7%, var(--surface)); }
+.callout.idea > .callout-title { color: var(--idea); }
+.callout.analogy { border-left-color: #d9822b; background: color-mix(in srgb, #d9822b 7%, var(--surface)); }
+.callout.analogy > .callout-title { color: #b8691c; }
+
+/* ---------- hints / answers / solutions ---------- */
+details.hint, details.solution { margin: 12px 0; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); }
+details.hint > summary, details.solution > summary { cursor: pointer; list-style: none; display: flex; align-items: center; gap: 10px; padding: 8px 14px; font-weight: 650; border-radius: var(--radius); }
+details > summary::-webkit-details-marker { display: none; }
+details.hint > summary::after, details.solution > summary::after { content: "▸"; margin-left: auto; color: var(--muted); }
+details[open].hint > summary::after, details[open].solution > summary::after { content: "▾"; }
+details[open].hint > summary, details[open].solution > summary { border-bottom: 1px solid var(--border); border-radius: var(--radius) var(--radius) 0 0; }
+details.hint > .body, details.solution > .body { padding: 6px 16px 14px; }
+.lvl { display: inline-block; border-radius: 6px; padding: 0 8px; font-size: 12px; font-weight: 700; color: #fff; }
+details.hint.l1 > summary { background: var(--l1-soft); } details.hint.l1 .lvl { background: var(--l1); }
+details.hint.l2 > summary { background: var(--l2-soft); } details.hint.l2 .lvl { background: var(--l2); }
+details.hint.l3 > summary { background: var(--l3-soft); } details.hint.l3 .lvl { background: var(--l3); }
+details.solution > summary { background: var(--l3-soft); } details.solution .lvl { background: var(--l3); }
+.spoiler-note { font-size: 12px; color: var(--muted); font-weight: 400; }
+details.answer { margin: 10px 0; border: 1px dashed var(--border); border-radius: 8px; background: var(--surface); }
+details.answer > summary { cursor: pointer; padding: 6px 12px; color: var(--accent); font-size: 14px; }
+details.answer > .body { padding: 2px 14px 10px; }
+
+/* ---------- code boxes ---------- */
+.codebox { margin: 14px 0; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; background: var(--code-bg); }
+.code-head { display: flex; align-items: center; gap: 10px; padding: 5px 10px; background: var(--surface-2); border-bottom: 1px solid var(--border); font-size: 12.5px; }
+.code-head .path { font-family: var(--mono); font-weight: 600; } .code-head .btn { margin-left: auto; padding: 1px 8px; font-size: 12px; }
+.codebox pre { margin: 0; border: 0; border-radius: 0; max-height: 560px; }
+.hljs-keyword, .hljs-built_in { color: var(--tk-kw); } .hljs-string { color: var(--tk-str); } .hljs-number { color: var(--tk-num); }
+.hljs-comment { color: var(--tk-com); font-style: italic; } .hljs-title, .hljs-title.function_ { color: var(--tk-fn); }
+.hljs-type, .hljs-class .hljs-title { color: var(--tk-type); } .hljs-meta { color: var(--warn); }
+
+/* ---------- stepper (step-through animation) ---------- */
+.stepper { margin: 18px 0; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); box-shadow: var(--shadow); }
+.stepper > .st-head { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 8px 12px; background: var(--surface-2); border-bottom: 1px solid var(--border); border-radius: var(--radius) var(--radius) 0 0; }
+.stepper .st-title { font-weight: 650; } .stepper .st-count { color: var(--muted); font: 13px var(--mono); }
+.stepper .st-ctrl { margin-left: auto; display: flex; gap: 6px; }
+.stepper .st-dots { display: flex; flex-wrap: wrap; gap: 4px; padding: 8px 12px 0; }
+.stepper .st-dot { width: 26px; height: 22px; border-radius: 6px; border: 1px solid var(--border); background: var(--surface); color: var(--muted); font: 11px var(--mono); cursor: pointer; padding: 0; }
+.stepper .st-dot.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+.stepper .st-dot.seen:not(.on) { border-color: var(--accent); color: var(--accent); }
+.stepper .st-diagram { padding: 10px 12px 0; } .stepper .st-diagram figure.flow { margin: 0; box-shadow: none; }
+.stepper .step { padding: 8px 16px 12px; }
+.stepper .step > .step-title { font-weight: 650; margin: 4px 0 6px; color: var(--accent); }
+.stepper.js .step { display: none; } .stepper.js .step.active { display: block; animation: fadein .22s ease; }
+.stepper:not(.js) .step + .step { border-top: 1px dashed var(--border); }
+@keyframes fadein { from { opacity: 0; transform: translateY(3px); } to { opacity: 1; transform: none; } }
+
+/* ---------- tabs ---------- */
+.tabs { margin: 14px 0; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); }
+.tab-heads { display: flex; gap: 2px; padding: 6px 8px 0; border-bottom: 1px solid var(--border); background: var(--surface-2); border-radius: var(--radius) var(--radius) 0 0; }
+.tab-btn { border: 1px solid transparent; border-bottom: 0; background: none; color: var(--muted); padding: 4px 12px; border-radius: 8px 8px 0 0; font: inherit; font-size: 13.5px; cursor: pointer; }
+.tab-btn.on { background: var(--surface); border-color: var(--border); color: var(--text); font-weight: 650; margin-bottom: -1px; }
+.tab-pane { display: none; padding: 4px 16px 10px; } .tab-pane.on { display: block; }
+
+/* ---------- cells ---------- */
+.cells { display: inline-flex; flex-wrap: wrap; gap: 3px; vertical-align: middle; }
+.cell { display: inline-block; min-width: 24px; padding: 0 5px; text-align: center; border: 1px solid var(--border); border-radius: 5px; font: 12px/20px var(--mono); background: var(--surface); }
+.cell.t { background: var(--f-acc-bg); border-color: var(--f-acc); } .cell.h { background: var(--f-vio-bg); border-color: var(--f-vio); }
+.cell.w { background: var(--f-teal-bg); border-color: var(--f-teal); } .cell.on { background: var(--hl-soft); border-color: var(--hl); font-weight: 700; }
+.cell.off { opacity: .45; } .cell.bad { background: var(--l3-soft); border-color: var(--bad); color: var(--bad); }
+.cell.ok { background: var(--l1-soft); border-color: var(--ok); color: var(--ok); } .cell.gap { border-style: dashed; }
+
+/* ---------- hub cards / progress ---------- */
+.cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; margin: 12px 0 8px; }
+.card { display: block; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); padding: 10px 14px; color: var(--text); box-shadow: var(--shadow); }
+.card:hover { border-color: var(--accent); text-decoration: none; }
+.card .cid { font: 700 12.5px var(--mono); color: var(--accent); } .card .cmeta { color: var(--muted); font-size: 12px; }
+.card .ctitle { font-weight: 650; margin: 2px 0 6px; line-height: 1.45; }
+.card .clinks { font-size: 12.5px; display: flex; flex-wrap: wrap; gap: 4px 10px; }
+.card.done { border-color: var(--ok); } .card.done .cid::after { content: " ✓"; color: var(--ok); }
+.progress { height: 8px; border-radius: 99px; background: var(--surface-2); overflow: hidden; margin: 8px 0 4px; }
+.progress > div { height: 100%; width: 0; background: var(--ok); transition: width .3s; }
+.done-row { display: flex; align-items: center; gap: 8px; margin: 10px 0; font-size: 14px; }
+
+/* ---------- React-Flow-style diagrams ---------- */
+figure.flow { margin: 16px 0; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); box-shadow: var(--shadow); overflow: hidden; }
+.flow-head { display: flex; align-items: baseline; gap: 10px; padding: 7px 12px; font-weight: 700; font-size: 14px; background: var(--surface-2); border-bottom: 1px solid var(--border); }
+.flow-hint { margin-left: auto; font-weight: 400; font-size: 11.5px; color: var(--muted); }
+.flow-body { overflow-x: auto; }
+.flow-body svg { display: block; margin: 0 auto; max-width: 100%; height: auto; font-family: var(--font); }
+figure.flow figcaption { padding: 7px 12px 9px; border-top: 1px solid var(--border); font-size: 13px; color: var(--muted); }
+.f-bgdot { fill: var(--f-dot); }
+.f-node rect.f-box { fill: var(--surface); stroke: var(--border); stroke-width: 1.3; filter: drop-shadow(0 1px 1.5px rgba(10,20,40,.10)); transition: stroke-width .15s, opacity .2s; }
+.f-node text.f-t { fill: var(--text); font-size: 13px; font-weight: 650; }
+.f-node text.f-s { fill: var(--muted); font-size: 11px; font-family: var(--mono); }
+.f-node .f-handle { fill: var(--surface); stroke: var(--muted); stroke-width: 1.2; }
+.f-node.k-acc rect.f-box { fill: var(--f-acc-bg); stroke: var(--f-acc); } .f-node.k-warn rect.f-box { fill: var(--f-warn-bg); stroke: var(--f-warn); }
+.f-node.k-pass rect.f-box { fill: var(--f-pass-bg); stroke: var(--f-pass); } .f-node.k-vio rect.f-box { fill: var(--f-vio-bg); stroke: var(--f-vio); }
+.f-node.k-teal rect.f-box { fill: var(--f-teal-bg); stroke: var(--f-teal); } .f-node.k-todo rect.f-box { fill: var(--f-todo-bg); stroke: var(--f-todo); }
+.f-node.k-dark rect.f-box { fill: var(--text); stroke: var(--text); } .f-node.k-dark text { fill: var(--bg) !important; }
+.f-node.k-ghost rect.f-box { fill: none; stroke-dasharray: 4 3; }
+.f-grp rect { fill: none; stroke: var(--border); stroke-width: 1.4; stroke-dasharray: 6 4; }
+.f-grp text { fill: var(--muted); font-size: 11.5px; font-family: var(--mono); }
+.f-grp.k-acc rect { fill: var(--f-acc-bg); fill-opacity: .35; stroke: var(--f-acc); } .f-grp.k-warn rect { fill: var(--f-warn-bg); fill-opacity: .45; stroke: var(--f-warn); }
+.f-grp.k-pass rect { fill: var(--f-pass-bg); fill-opacity: .45; stroke: var(--f-pass); } .f-grp.k-vio rect { fill: var(--f-vio-bg); fill-opacity: .45; stroke: var(--f-vio); }
+.f-grp.k-teal rect { fill: var(--f-teal-bg); fill-opacity: .45; stroke: var(--f-teal); } .f-grp.k-todo rect { fill: var(--f-todo-bg); fill-opacity: .45; stroke: var(--f-todo); }
+.f-e { fill: none; stroke: var(--muted); stroke-width: 1.6; transition: opacity .2s; }
+.f-e.k-acc { stroke: var(--f-acc); } .f-e.k-warn { stroke: var(--f-warn); } .f-e.k-pass { stroke: var(--f-pass); }
+.f-e.k-vio { stroke: var(--f-vio); } .f-e.k-teal { stroke: var(--f-teal); } .f-e.k-todo { stroke: var(--f-todo); }
+.f-ah { fill: var(--muted); transition: opacity .2s; } .f-ah.k-acc { fill: var(--f-acc); } .f-ah.k-warn { fill: var(--f-warn); } .f-ah.k-pass { fill: var(--f-pass); }
+.f-ah.k-vio { fill: var(--f-vio); } .f-ah.k-teal { fill: var(--f-teal); } .f-ah.k-todo { fill: var(--f-todo); }
+.f-e.dash { stroke-dasharray: 5 4; }
+.f-e.anim, .st-diagram svg.f-step .f-e.hl { stroke-dasharray: 6 4; animation: fdash .9s linear infinite; }
+@keyframes fdash { to { stroke-dashoffset: -20; } }
+@media (prefers-reduced-motion: reduce) { .f-e.anim, .st-diagram svg.f-step .f-e.hl { animation: none; } }
+.f-el rect { fill: var(--surface); stroke: var(--border); } .f-el text { fill: var(--text); font-size: 11px; font-family: var(--mono); }
+svg.f-on .f-e:not(.hl), svg.f-on .f-el:not(.hl), svg.f-on .f-ah:not(.hl), svg.f-step .f-e:not(.hl), svg.f-step .f-ah:not(.hl), svg.f-step .f-el:not(.hl) { opacity: .15; }
+svg.f-on .f-node:not(.hl), svg.f-step .f-node:not(.hl) { opacity: .35; }
+svg .f-node.hl rect.f-box { stroke-width: 2.6; }
+svg.f-step .f-node.hl rect.f-box { stroke: var(--hl); stroke-width: 3; }
+
+/* ---------- responsive / print ---------- */
+@media (max-width: 1180px) { .layout.has-right { grid-template-columns: var(--left) minmax(0, 1fr); } .outline { display: none; } }
+@media (max-width: 900px) {
+  .layout, .layout.has-right { display: block; } .sidebar, .outline { display: none; }
+  main { padding: 16px 16px 80px; } .cover h1 { font-size: 26px; } h2 { font-size: 22px; }
+}
+@media print {
+  .sidebar, .outline, .theme-btn, .flow-hint, .st-ctrl, .st-dots, .pager, .code-head .btn, .done-row, .progress, #prog-text { display: none !important; }
+  .layout, .layout.has-right { display: block; } main { max-width: none; padding: 0; }
+  body { font-size: 12.5px; background: #fff; }
+  h2 { break-before: page; margin-top: 0; } h3, h4 { break-after: avoid; }
+  .page-break { break-before: page; }
+  figure.flow, .callout, table, .stepper .step, details.answer { break-inside: avoid; }
+  .codebox pre { max-height: none !important; overflow: visible !important; white-space: pre-wrap; word-break: break-all; }
+  .stepper.js .step { display: block !important; border-top: 1px dashed var(--border); }
+  a.src::after { content: ""; }
+  .f-e.anim { animation: none; }
+}
+
+</style>
+</head>
+<body data-store="paged-kv-example" data-copied="Copied">
+<div class="layout has-right">
+<nav class="sidebar" aria-label="nav"><a class="brand" href="../index.html">Paged KV drills</a>
+<div class="nav-group">Knowledge</div>
+<a class="nav-l3" href="../knowledge/overview.html">Paged KV cache and continuous batching</a>
+<div class="nav-group">Track A · Memory and scheduling</div>
+<a class="nav-l3 cur" data-id="A1" href="../hints/a1_block_pool.html"><span class="nid">A1</span>BlockPool: ref counts, LRU free queue, prefix cache</a>
+<a class="nav-l3" data-id="A2" href="../hints/a2_token_budget_scheduler.html"><span class="nid">A2</span>Scheduler step: token budget, chunked prefill, FCFS admission</a></nav>
+<main>
+<header class="cover"><div class="kicker">A1 · Track A · Memory and scheduling · 50 min · medium</div><h1>A1 · BlockPool: ref counts, LRU free queue, prefix cache</h1><p class="lede">A fixed pool of KV blocks shared by all requests: reference counts decide who owns a block, an LRU free queue decides which block is reused, and chained hashes turn freed blocks into a prefix cache.</p><p class="small">Files: <a href="../mine/a1_block_pool.py"><code>mine/a1_block_pool.py</code></a> <span class="muted small">your code</span> · <a href="../tests/test_a1_block_pool.py"><code>tests/test_a1_block_pool.py</code></a> <span class="muted small">tests</span> · <a href="../solutions/a1_block_pool.py"><code>solutions/a1_block_pool.py</code></a> <span class="muted small">solution</span></p><label class="done-row"><input type="checkbox" id="done-box" data-id="A1"> I finished this drill</label></header>
+<h2 id="a1-1">The drill in one minute</h2>
+<ul>
+<li><strong>Where it lives</strong>: every engine step, the KV-cache manager asks the pool for blocks for new tokens and returns blocks of finished requests. In vLLM v1 this is <a class="src" href="https://github.com/vllm-project/vllm/blob/5e65d6b2adf64d1548c3b25ccc52ad55fcfe8044/vllm/v1/core/block_pool.py#L125">BlockPool</a>.</li>
+<li><strong>You implement</strong>: <code>BlockPool.__init__</code>, <code>allocate(token_ids) -&gt; (block_ids, num_cached_tokens)</code> and <code>free(block_ids)</code>. <code>hash_blocks</code>, <code>NoFreeBlocks</code> and the three read-only accessors are given.</li>
+<li><strong>The rules that make it subtle</strong>:
+<ol>
+<li>A cache hit on a block with <code>ref_cnt == 0</code> takes that block <strong>out of the free queue</strong>: it is no longer free capacity.</li>
+<li><code>allocate</code> is <strong>all or nothing</strong>: check capacity before touching any state.</li>
+<li>Fresh blocks come from the <strong>front</strong> of the queue; a fresh block that still holds an old hash is <strong>evicted</strong> from the cache right then.</li>
+<li><code>free</code> decrements in <strong>reverse</strong> order and appends ref-0 blocks to the <strong>back</strong>; their hashes stay cached.</li>
+</ol>
+</li>
+</ul>
+<p><strong>The tests check</strong>: fresh allocation order · only full blocks are cached · sharing while running · prefix must match from block 0 · freed blocks still hit · reverse free evicts the tail first · hits on free blocks reduce capacity · failure changes nothing · eviction removes the stale hash · double free raises.</p>
+<h2 id="a1-2">Intuition</h2>
+
+<div class="callout analogy"><div class="callout-title">Analogy · Hotel rooms with a memory</div><p>Each block is a hotel room. <code>ref_cnt</code> is how many guests share it. When the last guest checks out, the room goes to the end of the &quot;available&quot; line <strong>but housekeeping does not clean it yet</strong>: if a returning guest asks for &quot;the room with exactly my things in it&quot; (same hash), they get it back instantly. Only when the front desk gives that room to a <em>new</em> guest is it cleaned (the old hash evicted). And when a family leaves, the kids' rooms (the tail) are put in line ahead of the parents' room (the head), because the parents' room is the one other relatives are likely to ask for again.</p>
+</div>
+<h2 id="a1-3">The data structures</h2>
+
+<figure class="flow"><div class="flow-head">Three structures, one invariant<span class="flow-hint">hover a node to see its connections</span></div><div class="flow-body" data-flow="{&quot;title&quot;: &quot;Three structures, one invariant&quot;, &quot;nodes&quot;: [{&quot;id&quot;: &quot;ref&quot;, &quot;c&quot;: 0.0, &quot;r&quot;: 0.0, &quot;t&quot;: &quot;ref[block]&quot;, &quot;s&quot;: &quot;who uses it now&quot;, &quot;k&quot;: &quot;vio&quot;, &quot;w&quot;: 1.0}, {&quot;id&quot;: &quot;fq&quot;, &quot;c&quot;: 1.7, &quot;r&quot;: 0.0, &quot;t&quot;: &quot;free queue (LRU)&quot;, &quot;s&quot;: &quot;ref == 0, front = evict&quot;, &quot;k&quot;: &quot;warn&quot;, &quot;w&quot;: 1.0}, {&quot;id&quot;: &quot;bh&quot;, &quot;c&quot;: 0.0, &quot;r&quot;: 1.4, &quot;t&quot;: &quot;block_hash[block]&quot;, &quot;s&quot;: &quot;hash it holds, or None&quot;, &quot;k&quot;: &quot;acc&quot;, &quot;w&quot;: 1.0}, {&quot;id&quot;: &quot;cache&quot;, &quot;c&quot;: 1.7, &quot;r&quot;: 1.4, &quot;t&quot;: &quot;cache: hash → block&quot;, &quot;s&quot;: &quot;full blocks only&quot;, &quot;k&quot;: &quot;teal&quot;, &quot;w&quot;: 1.0}], &quot;edges&quot;: [{&quot;a&quot;: &quot;ref&quot;, &quot;b&quot;: &quot;fq&quot;, &quot;t&quot;: &quot;ref → 0: append&quot;, &quot;k&quot;: &quot;&quot;, &quot;anim&quot;: false, &quot;dash&quot;: false}, {&quot;a&quot;: &quot;fq:b&quot;, &quot;b&quot;: &quot;cache:t&quot;, &quot;t&quot;: &quot;pop: evict old hash&quot;, &quot;k&quot;: &quot;teal&quot;, &quot;anim&quot;: false, &quot;dash&quot;: false}, {&quot;a&quot;: &quot;bh&quot;, &quot;b&quot;: &quot;cache&quot;, &quot;t&quot;: &quot;full blocks&quot;, &quot;k&quot;: &quot;&quot;, &quot;anim&quot;: false, &quot;dash&quot;: false}], &quot;groups&quot;: [], &quot;cfg&quot;: {&quot;cw&quot;: 200.0, &quot;rh&quot;: 96.0, &quot;nw&quot;: 176.0}}"></div><figcaption>Invariant: a block is in the free queue <strong>iff</strong> its ref count is 0. The cache may point at free blocks; that is the whole point.</figcaption></figure>
+<h2 id="a1-4">Step through one scenario</h2>
+
+<div class="stepper"><div class="st-head"><span class="st-title">▶ Pool of 4 blocks, block_size 4</span><span class="st-count"></span><span class="st-ctrl"><button type="button" class="btn st-play" data-play="▶ Play" data-pause="❚❚ Pause">▶ Play</button><button type="button" class="btn st-prev">← Prev</button><button type="button" class="btn primary st-next">Next →</button></span></div><div class="st-dots"></div><div class="st-diagram"><figure class="flow"><div class="flow-body" data-flow="{&quot;title&quot;: &quot;&quot;, &quot;nodes&quot;: [{&quot;id&quot;: &quot;q&quot;, &quot;c&quot;: 0.0, &quot;r&quot;: 0.0, &quot;t&quot;: &quot;free queue&quot;, &quot;s&quot;: &quot;front → back&quot;, &quot;k&quot;: &quot;warn&quot;, &quot;w&quot;: 1.0}, {&quot;id&quot;: &quot;b0&quot;, &quot;c&quot;: 1.0, &quot;r&quot;: 0.0, &quot;t&quot;: &quot;block 0&quot;, &quot;s&quot;: &quot;&quot;, &quot;k&quot;: &quot;acc&quot;, &quot;w&quot;: 1.0}, {&quot;id&quot;: &quot;b1&quot;, &quot;c&quot;: 2.0, &quot;r&quot;: 0.0, &quot;t&quot;: &quot;block 1&quot;, &quot;s&quot;: &quot;&quot;, &quot;k&quot;: &quot;acc&quot;, &quot;w&quot;: 1.0}, {&quot;id&quot;: &quot;b2&quot;, &quot;c&quot;: 3.0, &quot;r&quot;: 0.0, &quot;t&quot;: &quot;block 2&quot;, &quot;s&quot;: &quot;&quot;, &quot;k&quot;: &quot;acc&quot;, &quot;w&quot;: 1.0}, {&quot;id&quot;: &quot;b3&quot;, &quot;c&quot;: 4.0, &quot;r&quot;: 0.0, &quot;t&quot;: &quot;block 3&quot;, &quot;s&quot;: &quot;&quot;, &quot;k&quot;: &quot;acc&quot;, &quot;w&quot;: 1.0}, {&quot;id&quot;: &quot;c&quot;, &quot;c&quot;: 2.0, &quot;r&quot;: 1.0, &quot;t&quot;: &quot;cache&quot;, &quot;s&quot;: &quot;hash → block&quot;, &quot;k&quot;: &quot;teal&quot;, &quot;w&quot;: 1.0}], &quot;edges&quot;: [{&quot;a&quot;: &quot;q&quot;, &quot;b&quot;: &quot;b0&quot;, &quot;t&quot;: &quot;&quot;, &quot;k&quot;: &quot;&quot;, &quot;anim&quot;: false, &quot;dash&quot;: false}, {&quot;a&quot;: &quot;b0&quot;, &quot;b&quot;: &quot;b1&quot;, &quot;t&quot;: &quot;&quot;, &quot;k&quot;: &quot;&quot;, &quot;anim&quot;: false, &quot;dash&quot;: true}, {&quot;a&quot;: &quot;b1&quot;, &quot;b&quot;: &quot;b2&quot;, &quot;t&quot;: &quot;&quot;, &quot;k&quot;: &quot;&quot;, &quot;anim&quot;: false, &quot;dash&quot;: true}, {&quot;a&quot;: &quot;b2&quot;, &quot;b&quot;: &quot;b3&quot;, &quot;t&quot;: &quot;&quot;, &quot;k&quot;: &quot;&quot;, &quot;anim&quot;: false, &quot;dash&quot;: true}, {&quot;a&quot;: &quot;b0:b&quot;, &quot;b&quot;: &quot;c:l&quot;, &quot;t&quot;: &quot;h0&quot;, &quot;k&quot;: &quot;&quot;, &quot;anim&quot;: false, &quot;dash&quot;: false}, {&quot;a&quot;: &quot;b1:b&quot;, &quot;b&quot;: &quot;c:t&quot;, &quot;t&quot;: &quot;h1&quot;, &quot;k&quot;: &quot;&quot;, &quot;anim&quot;: false, &quot;dash&quot;: false}], &quot;groups&quot;: [], &quot;cfg&quot;: {&quot;cw&quot;: 150.0, &quot;rh&quot;: 80.0, &quot;nw&quot;: 122.0}}"></div></figure></div><div class="st-body"><div class="step" data-hl="q,b0,b1,b2,b3"><div class="step-title">1. Start</div><p>All four blocks are free, in id order: queue <code>0 1 2 3</code>. Cache empty. <span class="cells"><span class="cell on">0</span><span class="cell on">1</span><span class="cell on">2</span><span class="cell on">3</span></span></p>
+</div><div class="step" data-hl="b0,b1,b2"><div class="step-title">2. allocate(A = 10 tokens)</div><p><code>hash_blocks</code> gives 2 hashes (two full blocks; the last 2 tokens are a partial block). No hits. Need ⌈10/4⌉ = 3 blocks → pop <code>0 1 2</code> from the front. Register <code>h0 → 0</code>, <code>h1 → 1</code>; block 2 gets no hash. Queue: <code>3</code>. <span class="cells"><span class="cell t">0</span><span class="cell t">1</span><span class="cell t">2</span><span class="cell ">3</span></span></p>
+</div><div class="step" data-hl="b0,b1,c"><div class="step-title">3. allocate(B = A&#x27;s first 8 tokens + 1 new)</div><p>Hashes of B: <code>h0, h1</code> → both hit (blocks 0, 1, ref becomes 2). Need 3 − 2 = 1 fresh block → pop <code>3</code>. B = <code>[0, 1, 3]</code>, <code>num_cached_tokens = 8</code>. Queue empty.</p>
+</div><div class="step" data-hl="b2,q"><div class="step-title">4. free(A)</div><p>Reverse order: block 2 → ref 0 → append; block 1 → ref 1; block 0 → ref 1. Queue: <code>2</code>. Blocks 0 and 1 are still used by B.</p>
+</div><div class="step" data-hl="q,b3,b1,b0"><div class="step-title">5. free(B)</div><p>Reverse: 3 → 0 (append), 1 → 0 (append), 0 → 0 (append). Queue: <code>2 3 1 0</code>. <strong>Tail first</strong>: the shared head (block 0) is the last to be evicted. Cache still holds <code>h0 → 0</code>, <code>h1 → 1</code>. <span class="cells"><span class="cell ">2</span><span class="cell ">3</span><span class="cell h">1</span><span class="cell h">0</span></span></p>
+</div><div class="step" data-hl="b0,b1,c"><div class="step-title">6. allocate(A again)</div><p>Hits <code>h0 → 0</code>, <code>h1 → 1</code>, both have ref 0, so both leave the queue (capacity drops by 2). Need 1 fresh → pop <code>2</code> (front). Queue: <code>3</code>. Prefix caching saved 8 tokens of prefill.</p>
+</div></div></div>
+<h2 id="a1-5">Pitfalls</h2>
+<ul>
+<li><strong>Counting hits on free blocks as free capacity.</strong> With 3 free blocks of which 2 are hits, a request that needs 3 fresh blocks must fail. A naive check passes and then crashes popping an empty queue, leaving refs incremented.</li>
+<li><strong>Mutating before the capacity check.</strong> Touching hits first and raising later leaks references: those blocks can never be freed.</li>
+<li><strong>Forgetting to evict the stale hash</strong> when a block is reused: the cache then maps an old hash to a block with new content, and a later &quot;hit&quot; returns wrong KV values silently.</li>
+<li><strong>Evicting the wrong entry</strong>: only delete <code>cache[old]</code> if it still points at <em>this</em> block.</li>
+<li><strong>Caching the partial last block</strong>: its content changes as tokens are appended.</li>
+<li><strong>Freeing in forward order</strong>: correct refcounts, wrong eviction order. The test with a 3-block pool catches it.</li>
+</ul>
+<h2 id="a1-6">Hints</h2>
+
+<details class="hint l1"><summary><span class="lvl">L1</span>I/O examples and the key questions<span class="spoiler-note">direction (light spoiler)</span></summary><div class="body"><pre><code class="language-python">pool = BlockPool(num_blocks=4, block_size=4)
+pool.allocate(list(range(10)))        # -&gt; ([0, 1, 2], 0)
+pool.allocate(list(range(8)) + [99])  # -&gt; ([0, 1, 3], 8)    blocks 0,1 shared, ref 2
+pool.num_free_blocks                  # -&gt; 0
+pool.allocate([7])                    # raises NoFreeBlocks, nothing changes
+</code></pre>
+<h4>Key questions</h4>
+<ol>
+<li>Which data structure gives O(1) &quot;pop the oldest&quot;, &quot;append newest&quot; <strong>and</strong> &quot;remove this one from the middle&quot;?</li>
+<li>A cache hit on a block whose <code>ref_cnt</code> is 0: what has to happen to the free queue?</li>
+<li>How many blocks does a 10-token sequence need with <code>block_size = 4</code>, and how many of them get a hash?</li>
+<li>When exactly is a hash removed from the cache?</li>
+<li>Why reverse order in <code>free</code>?</li>
+</ol>
+</div></details>
+
+<details class="hint l2"><summary><span class="lvl">L2</span>Approach and common traps<span class="spoiler-note">breakdown & pitfalls (medium spoiler)</span></summary><div class="body"><ul>
+<li><strong>State</strong>: <code>ref: list[int]</code>, <code>block_hash: list[int | None]</code>, <code>free_q: OrderedDict[int, None]</code> (front = evict first), <code>cache: dict[int, int]</code>.</li>
+<li><strong>allocate</strong>:
+<ol>
+<li><code>hashes = hash_blocks(...)</code>, <code>n = ceil(len / block_size)</code>.</li>
+<li>Walk <code>hashes</code> while <code>cache</code> has them → <code>hits</code>. Stop at the first miss.</li>
+<li><code>need = n - len(hits)</code>; <code>evictable = len(free_q) - (#hits with ref 0)</code>; raise if <code>evictable &lt; need</code>.</li>
+<li>Touch hits (remove from <code>free_q</code> if ref was 0; <code>ref += 1</code>).</li>
+<li>Pop <code>need</code> blocks from the front; evict their old hash if <code>cache[old] == block</code>; set ref 1.</li>
+<li>Give hashes to the new full blocks (<code>setdefault</code>, first writer wins).</li>
+</ol>
+</li>
+<li><strong>free</strong>: <code>for b in reversed(ids)</code>: decrement; at 0 append to the back. Raise on ref ≤ 0.</li>
+</ul>
+</div></details>
+
+<details class="hint l3"><summary><span class="lvl">L3</span>Detailed answers<span class="spoiler-note">nearly the answer (heavy spoiler)</span></summary><div class="body"><details class="answer"><summary>Answers to the key questions</summary><div class="body"><ol>
+<li>An <code>OrderedDict</code> keyed by block id: <code>popitem(last=False)</code>, <code>d[b] = None</code>, <code>del d[b]</code> are all O(1). vLLM uses an intrusive doubly-linked list on the block objects for the same complexity without hashing (<a class="src" href="https://github.com/vllm-project/vllm/blob/5e65d6b2adf64d1548c3b25ccc52ad55fcfe8044/vllm/v1/core/kv_cache_utils.py#L225">FreeKVCacheBlockQueue</a>).</li>
+<li>It must be removed from the free queue (it is in use again), which is why it does not count as free capacity for the same allocation.</li>
+<li>⌈10/4⌉ = 3 blocks; only the 2 full blocks get a hash.</li>
+<li>When the block is popped from the free queue to hold <em>new</em> content (and only if the cache entry still points at that block). Freeing never removes hashes.</li>
+<li>The free queue is the eviction order. Appending tail blocks first puts them nearer the front, so they are evicted before the head blocks, which are the ones other requests are most likely to share.</li>
+</ol>
+</div></details></div></details>
+<h2 id="a1-7">Reference solution</h2>
+
+<details class="solution"><summary><span class="lvl">✓</span>solutions/a1_block_pool.py<span class="spoiler-note">finish and test yours first</span></summary><div class="body"><div class="codebox"><div class="code-head"><span class="path">solutions/a1_block_pool.py</span><span class="muted small">130 lines</span><button type="button" class="btn copy">Copy</button></div><pre><code class="language-python">&quot;&quot;&quot;A1 · BlockPool with prefix caching — reference solution.
+
+A fixed pool of KV-cache blocks shared by all requests (vLLM v1 `BlockPool` +
+`FreeKVCacheBlockQueue`, simplified to one KV-cache group):
+
+- Every block has a reference count. ref_cnt &gt; 0: some running request uses it.
+  ref_cnt == 0: it sits in the free queue and may be handed out again.
+- A FULL block (block_size tokens) gets a content hash chained to the hash of the block
+  before it, so equal hashes mean &quot;same tokens AND same prefix&quot;. Freed blocks keep their hash:
+  until a block is actually reused for something else it is a prefix-cache entry.
+- allocate(token_ids) reuses the longest cached prefix, then takes fresh blocks from the
+  FRONT of the free queue (least recently freed first). A fresh block that still carries an old
+  hash is evicted from the cache at that moment.
+- free(block_ids) decrements in REVERSE order and appends blocks that reach 0 to the BACK of the
+  queue, so a sequence&#x27;s tail blocks are evicted before its head blocks: heads are shared more.
+
+API
+    hash_blocks(token_ids, block_size) -&gt; list[int]       given: one chained hash per full block
+    NoFreeBlocks(Exception)                                 given
+    BlockPool(num_blocks, block_size)
+        .allocate(token_ids) -&gt; (block_ids, num_cached_tokens)   all or nothing
+        .free(block_ids) -&gt; None
+        .num_free_blocks -&gt; int                            blocks with ref_cnt == 0
+        .ref_count(block_id) -&gt; int
+        .cached_block(block_hash) -&gt; int | None            block currently registered for a hash
+&quot;&quot;&quot;
+from __future__ import annotations
+
+from collections import OrderedDict
+
+
+class NoFreeBlocks(Exception):
+    &quot;&quot;&quot;Not enough evictable blocks for an allocation. Raised before anything is modified.&quot;&quot;&quot;
+
+
+def hash_blocks(token_ids: list[int], block_size: int) -&gt; list[int]:
+    &quot;&quot;&quot;One hash per FULL block; block i&#x27;s hash covers its tokens and the hash of block i-1.
+
+    Chaining is what makes the cache a *prefix* cache: block 3 of two prompts only matches if
+    blocks 0..2 matched too, because their hashes are inside block 3&#x27;s hash.
+    (Python&#x27;s hash of a tuple of ints is deterministic, which is all a single process needs;
+    vLLM uses sha256 or a seeded builtin hash for the same reason.)
+    &quot;&quot;&quot;
+    hashes, parent = [], None
+    for start in range(0, len(token_ids) - block_size + 1, block_size):
+        parent = hash((parent, tuple(token_ids[start:start + block_size])))
+        hashes.append(parent)
+    return hashes
+
+
+class BlockPool:
+    def __init__(self, num_blocks: int, block_size: int) -&gt; None:
+        self.block_size = block_size
+        self.ref = [0] * num_blocks                       # ref_cnt per block id
+        self.block_hash: list[int | None] = [None] * num_blocks   # hash a block currently holds
+        # Free queue in eviction order: front = evict first. An OrderedDict gives O(1)
+        # popleft (popitem(last=False)), append, and O(1) removal from the MIDDLE, which a cache
+        # hit on a free block needs. vLLM gets the same with an intrusive doubly-linked list
+        # (prev/next pointers stored on the block objects) to avoid hashing on the hot path.
+        self.free_q: OrderedDict[int, None] = OrderedDict((b, None) for b in range(num_blocks))
+        self.cache: dict[int, int] = {}                   # block hash -&gt; block id
+
+    @property
+    def num_free_blocks(self) -&gt; int:
+        return len(self.free_q)
+
+    def ref_count(self, block_id: int) -&gt; int:
+        return self.ref[block_id]
+
+    def cached_block(self, block_hash: int) -&gt; int | None:
+        return self.cache.get(block_hash)
+
+    def allocate(self, token_ids: list[int]) -&gt; tuple[list[int], int]:
+        hashes = hash_blocks(token_ids, self.block_size)
+        n_blocks = -(-len(token_ids) // self.block_size)     # ceil: a partial last block still needs a block
+
+        # 1. Longest cached prefix. Stop at the FIRST miss: thanks to chaining, a later hit after a
+        #    miss is impossible for honest hashes, and stopping keeps the blocks contiguous.
+        hits: list[int] = []
+        for h in hashes:
+            b = self.cache.get(h)
+            if b is None:
+                break
+            hits.append(b)
+        need = n_blocks - len(hits)
+
+        # 2. Capacity check BEFORE mutating anything (all-or-nothing). A hit on a block whose
+        #    ref_cnt is 0 takes that block out of the free queue, so it no longer counts as free.
+        hits_in_free = sum(1 for b in hits if self.ref[b] == 0)
+        if self.num_free_blocks - hits_in_free &lt; need:
+            raise NoFreeBlocks(f&quot;need {need} blocks, {self.num_free_blocks - hits_in_free} evictable&quot;)
+
+        # 3. Touch the hits: ref 0 -&gt; 1 removes the block from the eviction candidates.
+        for b in hits:
+            if self.ref[b] == 0:
+                del self.free_q[b]
+            self.ref[b] += 1
+
+        # 4. Fresh blocks from the front of the queue (least recently freed). A block that still
+        #    holds an old hash is evicted from the cache now, and only if the cache entry is still
+        #    this block (another block may have been registered for that hash since).
+        fresh: list[int] = []
+        for _ in range(need):
+            b, _ = self.free_q.popitem(last=False)
+            old = self.block_hash[b]
+            if old is not None and self.cache.get(old) == b:
+                del self.cache[old]
+            self.block_hash[b] = None
+            self.ref[b] = 1
+            fresh.append(b)
+
+        # 5. Register the new FULL blocks in the cache. The partial last block gets no hash: its
+        #    content will still change as tokens are appended. If the hash is already cached (two
+        #    requests computed the same block), keep the existing entry: the first one wins.
+        blocks = hits + fresh
+        for i in range(len(hits), len(hashes)):
+            h = hashes[i]
+            self.block_hash[blocks[i]] = h
+            self.cache.setdefault(h, blocks[i])
+        return blocks, len(hits) * self.block_size
+
+    def free(self, block_ids: list[int]) -&gt; None:
+        # Reverse order: the tail of a sequence is the least likely to be shared, so it should be
+        # evicted first, i.e. sit nearer the FRONT of the queue. Appending tail-first does that.
+        for b in reversed(block_ids):
+            if self.ref[b] &lt;= 0:
+                raise ValueError(f&quot;block {b} freed more times than allocated&quot;)
+            self.ref[b] -= 1
+            if self.ref[b] == 0:
+                self.free_q[b] = None    # back of the queue; the hash (if any) stays cached</code></pre></div></div></details>
+<h2 id="a1-8">Follow-ups and the real source</h2>
+<ul>
+<li>vLLM keeps one more rule this drill skips: it never serves the <em>whole</em> prompt from cache, it recomputes at least the last token so the model produces logits for sampling. Where would you add that?</li>
+<li>How does the pool change when a model has several KV-cache groups (e.g. sliding-window + full attention layers)? Look at <a class="src" href="https://github.com/vllm-project/vllm/blob/5e65d6b2adf64d1548c3b25ccc52ad55fcfe8044/vllm/v1/core/kv_cache_coordinator.py">kv_cache_coordinator.py</a>.</li>
+<li>Compare with the real code: <a class="src" href="https://github.com/vllm-project/vllm/blob/5e65d6b2adf64d1548c3b25ccc52ad55fcfe8044/vllm/v1/core/block_pool.py#L267">get_new_blocks</a> · <a class="src" href="https://github.com/vllm-project/vllm/blob/5e65d6b2adf64d1548c3b25ccc52ad55fcfe8044/vllm/v1/core/block_pool.py#L331">touch</a> · <a class="src" href="https://github.com/vllm-project/vllm/blob/5e65d6b2adf64d1548c3b25ccc52ad55fcfe8044/vllm/v1/core/block_pool.py#L347">free_blocks</a> · <a class="src" href="https://github.com/vllm-project/vllm/blob/5e65d6b2adf64d1548c3b25ccc52ad55fcfe8044/vllm/v1/core/block_pool.py#L196">cache_full_blocks</a>.</li>
+</ul>
+
+<nav class="pager"><span></span><a href="a2_token_budget_scheduler.html">A2 Next →</a></nav>
+</main>
+<aside class="outline" aria-label="outline"><div class="ttl">On this page</div>
+<a class="o2" href="#a1-1">The drill in one minute</a>
+<a class="o2" href="#a1-2">Intuition</a>
+<a class="o2" href="#a1-3">The data structures</a>
+<a class="o2" href="#a1-4">Step through one scenario</a>
+<a class="o2" href="#a1-5">Pitfalls</a>
+<a class="o2" href="#a1-6">Hints</a>
+<a class="o2" href="#a1-7">Reference solution</a>
+<a class="o2" href="#a1-8">Follow-ups and the real source</a></aside>
+</div>
+<button class="theme-btn" type="button" id="theme-btn">◐ Theme</button>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/rust.min.js"></script>
+<script>
+/* ai-infra-dev-skills · shared page behaviour. Pure DOM, no dependencies, works from file:// and in print. */
+(function () {
+  "use strict";
+  var NS = "http://www.w3.org/2000/svg";
+  var BODY = document.body || document.documentElement;
+  var KEY = (BODY.getAttribute && BODY.getAttribute("data-store")) || "aids";
+  var store = {
+    get: function (k, d) { try { var v = localStorage.getItem(KEY + ":" + k); return v === null ? d : JSON.parse(v); } catch (e) { return d; } },
+    set: function (k, v) { try { localStorage.setItem(KEY + ":" + k, JSON.stringify(v)); } catch (e) {} }
+  };
+  var PRINT = /[?&]print\b/.test(location.search) || window.__PRINT__;
+  function each(sel, fn, root) { Array.prototype.forEach.call((root || document).querySelectorAll(sel), fn); }
+
+  // ------------------------------------------------------------------ theme
+  function applyTheme(t) { if (t) document.documentElement.setAttribute("data-theme", t); else document.documentElement.removeAttribute("data-theme"); }
+  applyTheme(PRINT ? "light" : store.get("theme", null));
+  function initTheme() {
+    var b = document.getElementById("theme-btn"); if (!b) return;
+    b.addEventListener("click", function () {
+      var cur = document.documentElement.getAttribute("data-theme");
+      var dark = cur ? cur === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;
+      applyTheme(dark ? "light" : "dark"); store.set("theme", dark ? "light" : "dark");
+    });
+  }
+
+  // ------------------------------------------------------------------ flow diagrams (React-Flow style, static SVG)
+  function el(tag, attrs, parent) { var e = document.createElementNS(NS, tag); for (var k in attrs) e.setAttribute(k, attrs[k]); if (parent) parent.appendChild(e); return e; }
+  function txt(parent, x, y, s, cls, anchor) { var t = el("text", { x: x, y: y, "class": cls, "text-anchor": anchor || "middle" }, parent); t.textContent = s; return t; }
+  function renderFlow(host, spec) {
+    var cfg = spec.cfg || {}, CW = cfg.cw || 200, RH = cfg.rh || 88, NW = cfg.nw || 160, PAD = 26;
+    var N = {}, maxX = 0, maxY = 0;
+    spec.nodes.forEach(function (n) {
+      var w = NW * n.w, h = n.s ? 52 : 38, x = PAD + n.c * CW, y = PAD + 14 + n.r * RH;
+      N[n.id] = { n: n, x: x, y: y, w: w, h: h, cx: x + w / 2, cy: y + h / 2 };
+      maxX = Math.max(maxX, x + w); maxY = Math.max(maxY, y + h);
+    });
+    var groups = (spec.groups || []).map(function (g) {
+      var x0 = PAD + g.c0 * CW - 14, y0 = PAD + 14 + g.r0 * RH - 28, x1 = PAD + g.c1 * CW + NW + 14, y1 = PAD + 14 + g.r1 * RH + 52 + 14;
+      maxX = Math.max(maxX, x1); maxY = Math.max(maxY, y1); return { g: g, x0: x0, y0: y0, x1: x1, y1: y1 };
+    });
+    var W = maxX + PAD, H = maxY + PAD;
+    var svg = el("svg", { viewBox: "0 0 " + W + " " + H, width: W, role: "img", "aria-label": spec.title });
+    var uid = "f" + Math.random().toString(36).slice(2, 8);
+    var pat = el("pattern", { id: uid + "dot", width: 16, height: 16, patternUnits: "userSpaceOnUse" }, el("defs", {}, svg));
+    el("circle", { cx: 1, cy: 1, r: 1, "class": "f-bgdot" }, pat);
+    var bg = el("rect", { x: 0, y: 0, width: W, height: H, fill: "url(#" + uid + "dot)" }, svg);
+    groups.forEach(function (G) {
+      var gg = el("g", { "class": "f-grp" + (G.g.k ? " k-" + G.g.k : "") }, svg);
+      el("rect", { x: G.x0, y: G.y0, width: G.x1 - G.x0, height: G.y1 - G.y0, rx: 10 }, gg);
+      txt(gg, G.x0 + 10, G.y0 + 15, G.g.t, "", "start");
+    });
+    var edgeLayer = el("g", {}, svg), nodeLayer = el("g", {}, svg), topLayer = el("g", {}, svg);
+    function side(A, B) {
+      var dx = B.cx - A.cx, dy = B.cy - A.cy;
+      if (Math.abs(dx) >= Math.abs(dy) * 0.9) return dx >= 0 ? ["r", "l"] : ["l", "r"];
+      return dy >= 0 ? ["b", "t"] : ["t", "b"];
+    }
+    function port(P, s) { return s === "r" ? [P.x + P.w, P.cy] : s === "l" ? [P.x, P.cy] : s === "t" ? [P.cx, P.y] : [P.cx, P.y + P.h]; }
+    function dir(s) { return s === "r" ? [1, 0] : s === "l" ? [-1, 0] : s === "t" ? [0, -1] : [0, 1]; }
+    var nodeEdges = {};
+    spec.edges.forEach(function (e) {
+      var as = e.a.split(":"), bs = e.b.split(":"), A = N[as[0]], B = N[bs[0]];
+      var auto = side(A, B), sa = as[1] || auto[0], sb = bs[1] || auto[1];
+      var p0 = port(A, sa), p3 = port(B, sb), d0 = dir(sa), d3 = dir(sb);
+      var dist = Math.hypot(p3[0] - p0[0], p3[1] - p0[1]), off = Math.max(36, Math.min(140, dist * 0.45));
+      if (sa === sb) off = Math.max(off, 60);
+      var p1 = [p0[0] + d0[0] * off, p0[1] + d0[1] * off], p2 = [p3[0] + d3[0] * (off + 6), p3[1] + d3[1] * (off + 6)];
+      var end = [p3[0] + d3[0] * 8, p3[1] + d3[1] * 8];
+      var k = e.k ? " k-" + e.k : "", eid = as[0] + ">" + bs[0];
+      var path = el("path", { d: "M" + p0 + " C" + p1 + " " + p2 + " " + end, "class": "f-e" + k + (e.anim ? " anim" : "") + (e.dash ? " dash" : ""), "data-edge": eid }, edgeLayer);
+      // arrowhead: tip on the target port, body outside the node, drawn above the nodes
+      var bx = p3[0] + d3[0] * 9, by = p3[1] + d3[1] * 9;
+      var ah = el("path", { d: "M" + p3 + " L" + (bx + d3[1] * 4.5) + "," + (by - d3[0] * 4.5) + " L" + (bx - d3[1] * 4.5) + "," + (by + d3[0] * 4.5) + " z", "class": "f-ah" + k, "data-edge": eid }, topLayer);
+      var items = [path, ah];
+      if (e.t) {
+        var t = 0.5, mx = Math.pow(1 - t, 3) * p0[0] + 3 * Math.pow(1 - t, 2) * t * p1[0] + 3 * (1 - t) * t * t * p2[0] + t * t * t * end[0];
+        var my = Math.pow(1 - t, 3) * p0[1] + 3 * Math.pow(1 - t, 2) * t * p1[1] + 3 * (1 - t) * t * t * p2[1] + t * t * t * end[1];
+        var lg = el("g", { "class": "f-el", "data-edge": eid }, topLayer);
+        var tw = 12; for (var ci = 0; ci < e.t.length; ci++) tw += e.t.charCodeAt(ci) > 0x2E7F ? 11.5 : 6.6; tw = Math.max(24, tw);
+        var horiz = (sa === "l" || sa === "r") && (sb === "l" || sb === "r");
+        var gap = horiz ? Math.abs(end[0] - p0[0]) : Math.abs(end[1] - p0[1]);
+        if (horiz && tw > gap - 6) my = Math.min(p0[1], end[1]) - 15;
+        else if (!horiz && sa !== sb && 20 > gap - 4) mx = Math.max(p0[0], end[0]) + tw / 2 + 8;
+        el("rect", { x: mx - tw / 2, y: my - 10, width: tw, height: 18, rx: 5 }, lg);
+        txt(lg, mx, my + 3.5, e.t, "");
+        items.push(lg);
+      }
+      [as[0], bs[0]].forEach(function (id) { (nodeEdges[id] = nodeEdges[id] || []).push({ items: items, other: id === as[0] ? bs[0] : as[0] }); });
+    });
+    var nodeEls = {};
+    spec.nodes.forEach(function (n) {
+      var P = N[n.id], g = el("g", { "class": "f-node" + (n.k ? " k-" + n.k : ""), "data-node": n.id }, nodeLayer);
+      el("rect", { x: P.x, y: P.y, width: P.w, height: P.h, rx: 9, "class": "f-box" }, g);
+      txt(g, P.cx, P.y + (n.s ? 21 : 23.5), n.t, "f-t");
+      if (n.s) txt(g, P.cx, P.y + 39, n.s, "f-s");
+      [[P.x, P.cy], [P.x + P.w, P.cy], [P.cx, P.y], [P.cx, P.y + P.h]].forEach(function (h) { el("circle", { cx: h[0], cy: h[1], r: 2.6, "class": "f-handle" }, g); });
+      nodeEls[n.id] = g;
+      g.addEventListener("mouseenter", function () {
+        if (svg.classList.contains("f-step")) return;
+        svg.classList.add("f-on"); g.classList.add("hl");
+        (nodeEdges[n.id] || []).forEach(function (c) { c.items.forEach(function (x) { x.classList.add("hl"); }); nodeEls[c.other].classList.add("hl"); });
+      });
+      g.addEventListener("mouseleave", function () {
+        if (svg.classList.contains("f-step")) return;
+        svg.classList.remove("f-on"); each(".hl", function (x) { x.classList.remove("hl"); }, svg);
+      });
+    });
+    host.appendChild(svg);
+    try {   // grow the canvas to whatever was drawn (loop edges can swing outside the grid)
+      var bb = svg.getBBox(), x0 = Math.min(0, bb.x - 12), y0 = Math.min(0, bb.y - 12);
+      var x1 = Math.max(W, bb.x + bb.width + 12), y1 = Math.max(H, bb.y + bb.height + 12);
+      svg.setAttribute("viewBox", x0 + " " + y0 + " " + (x1 - x0) + " " + (y1 - y0)); svg.setAttribute("width", x1 - x0);
+      bg.setAttribute("x", x0); bg.setAttribute("y", y0); bg.setAttribute("width", x1 - x0); bg.setAttribute("height", y1 - y0);
+    } catch (err) {}
+  }
+  function initFlows() {
+    each(".flow-body[data-flow]", function (h) {
+      try { renderFlow(h, JSON.parse(h.getAttribute("data-flow"))); } catch (e) { h.textContent = "diagram error: " + e; }
+    });
+  }
+
+  // ------------------------------------------------------------------ steppers (with flow highlighting + autoplay)
+  function initStepper(root) {
+    var steps = Array.prototype.slice.call(root.querySelectorAll(":scope > .st-body > .step"));
+    if (!steps.length) return;
+    root.classList.add("js");
+    var count = root.querySelector(".st-count"), prev = root.querySelector(".st-prev"), next = root.querySelector(".st-next");
+    var play = root.querySelector(".st-play"), dotsBox = root.querySelector(".st-dots"), dia = root.querySelector(".st-diagram");
+    var seen = {}, cur = 0, timer = null;
+    var dots = steps.map(function (s, i) {
+      var b = document.createElement("button"); b.className = "st-dot"; b.type = "button"; b.textContent = String(i + 1);
+      b.title = (s.querySelector(".step-title") || {}).textContent || "";
+      b.addEventListener("click", function () { stop(); show(i); }); dotsBox.appendChild(b); return b;
+    });
+    function show(i) {
+      cur = Math.max(0, Math.min(steps.length - 1, i)); seen[cur] = true;
+      steps.forEach(function (s, j) { s.classList.toggle("active", j === cur); });
+      dots.forEach(function (d, j) { d.classList.toggle("on", j === cur); d.classList.toggle("seen", !!seen[j]); });
+      count.textContent = (cur + 1) + " / " + steps.length; prev.disabled = cur === 0; next.disabled = cur === steps.length - 1;
+      if (!dia) return;
+      var hl = (steps[cur].getAttribute("data-hl") || "").split(",").map(function (x) { return x.trim(); }).filter(Boolean);
+      each("svg", function (svg) { svg.classList.toggle("f-step", hl.length > 0); }, dia);
+      each("[data-node]", function (n) { n.classList.toggle("hl", hl.indexOf(n.getAttribute("data-node")) >= 0); }, dia);
+      each("[data-edge]", function (e) { var ab = e.getAttribute("data-edge").split(">"); e.classList.toggle("hl", hl.indexOf(ab[0]) >= 0 && hl.indexOf(ab[1]) >= 0); }, dia);
+    }
+    function stop() { if (timer) { clearInterval(timer); timer = null; play.textContent = play.getAttribute("data-play"); } }
+    play.addEventListener("click", function () {
+      if (timer) { stop(); return; }
+      if (cur === steps.length - 1) show(0);
+      play.textContent = play.getAttribute("data-pause");
+      timer = setInterval(function () { if (cur >= steps.length - 1) stop(); else show(cur + 1); }, 2600);
+    });
+    prev.addEventListener("click", function () { stop(); show(cur - 1); });
+    next.addEventListener("click", function () { stop(); show(cur + 1); });
+    root.setAttribute("tabindex", "0");
+    root.addEventListener("keydown", function (e) {
+      if (e.target !== root) return;
+      if (e.key === "ArrowRight") { stop(); show(cur + 1); e.preventDefault(); }
+      if (e.key === "ArrowLeft") { stop(); show(cur - 1); e.preventDefault(); }
+    });
+    show(0);
+  }
+
+  // ------------------------------------------------------------------ tabs, copy, scroll-spy, progress
+  function initTabs() {
+    each(".tabs", function (t) {
+      var btns = t.querySelectorAll(":scope > .tab-heads > .tab-btn"), panes = t.querySelectorAll(":scope > .tab-pane");
+      Array.prototype.forEach.call(btns, function (b, i) {
+        b.addEventListener("click", function () {
+          Array.prototype.forEach.call(btns, function (x, j) { x.classList.toggle("on", i === j); });
+          Array.prototype.forEach.call(panes, function (x, j) { x.classList.toggle("on", i === j); });
+        });
+      });
+    });
+  }
+  function initCopy() {
+    each(".codebox .copy", function (b) {
+      b.addEventListener("click", function () {
+        var code = b.closest(".codebox").querySelector("code").innerText, label = b.textContent;
+        var done = function () { b.textContent = BODY.getAttribute("data-copied") || "✓"; setTimeout(function () { b.textContent = label; }, 1200); };
+        if (navigator.clipboard) navigator.clipboard.writeText(code).then(done, function () {}); else done();
+      });
+    });
+  }
+  function initSpy() {
+    var links = Array.prototype.slice.call(document.querySelectorAll(".sidebar a[href^='#'], .outline a[href^='#']"));
+    if (!links.length) return;
+    var targets = links.map(function (a) { return document.getElementById(decodeURIComponent(a.getAttribute("href").slice(1))); });
+    function onScroll() {
+      var best = -1;
+      targets.forEach(function (t, i) { if (t && t.getBoundingClientRect().top < 130) best = i; });
+      var id = best >= 0 && targets[best] ? targets[best].id : null;
+      links.forEach(function (a) { a.classList.toggle("cur", !!id && a.getAttribute("href") === "#" + id); });
+    }
+    addEventListener("scroll", onScroll, { passive: true }); onScroll();
+  }
+  function initProgress() {
+    var done = store.get("done", {}) || {};
+    var box = document.getElementById("done-box");
+    if (box) {
+      var id = box.getAttribute("data-id"); box.checked = !!done[id];
+      box.addEventListener("change", function () { var d = store.get("done", {}) || {}; if (box.checked) d[id] = true; else delete d[id]; store.set("done", d); });
+    }
+    each(".sidebar a[data-id]", function (a) { a.classList.toggle("done", !!done[a.getAttribute("data-id")]); });
+    var cards = document.querySelectorAll(".card[data-id]");
+    if (!cards.length) return;
+    function refresh() {
+      var d = store.get("done", {}) || {}, n = 0, mins = 0, total = 0;
+      Array.prototype.forEach.call(cards, function (c) {
+        var m = +c.getAttribute("data-min") || 0, on = !!d[c.getAttribute("data-id")]; total += m;
+        c.classList.toggle("done", on); var cb = c.querySelector("input.chk"); if (cb) cb.checked = on;
+        if (on) { n += 1; mins += m; }
+      });
+      var bar = document.getElementById("prog-bar"), t = document.getElementById("prog-text");
+      if (bar) bar.style.width = (100 * n / cards.length).toFixed(1) + "%";
+      if (t) t.textContent = (t.getAttribute("data-fmt") || "{n} / {N} · {m} / {M} min")
+        .replace("{n}", n).replace("{N}", cards.length).replace("{m}", mins).replace("{M}", total);
+    }
+    each("input.chk", function (cb) {
+      cb.addEventListener("click", function (e) { e.stopPropagation(); });
+      cb.addEventListener("change", function () {
+        var d = store.get("done", {}) || {}, id = cb.closest(".card").getAttribute("data-id");
+        if (cb.checked) d[id] = true; else delete d[id]; store.set("done", d); refresh();
+      });
+    });
+    refresh();
+  }
+
+  function boot() {
+    initTheme(); initFlows(); each(".stepper", initStepper); initTabs(); initCopy(); initSpy(); initProgress();
+    if (window.hljs) each("pre code[class*='language-']", function (c) { try { window.hljs.highlightElement(c); } catch (e) {} });
+    if (PRINT) each("details", function (d) { d.open = true; });
+    document.documentElement.setAttribute("data-ready", "1");
+  }
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", boot); else boot();
+})();
+
+</script>
+</body>
+</html>

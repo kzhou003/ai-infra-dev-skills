@@ -1,0 +1,15 @@
+{
+  "title": "RSSHub + Folo：从原理到源码",
+  "kicker": "Source-level guide · RSSHub × Folo",
+  "lede": "一份为“自己动手 contribute / 定制 RSS 阅读器”准备的导读：两个项目各自要解决什么问题、有哪些限制、架构如何拆分、组件之间怎样连接，以及开源许可证对你意味着什么。",
+  "brand": "RSSHub + Folo 导读",
+  "lang": "zh",
+  "sources": ["report.md"],
+  "output": "report.html",
+  "pdf": "report.pdf",
+  "pins": {
+    "rh": {"repo": "DIYgod/RSSHub", "sha": "8f4fd435601c7f5048ce65284405f276f70fb918", "local": "~/development/RSSHub"},
+    "fo": {"repo": "RSSNext/Folo", "sha": "158ecbecaac12777b2c3a1e1cc4be90d6bbb28b1", "local": "~/development/Folo"}
+  },
+  "quality": {"flows": 8, "analogies": 2, "links": 60}
+}
