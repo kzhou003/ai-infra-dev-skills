@@ -68,8 +68,21 @@ bash <skill>/toolkit/run.sh build_report.py <out>/report.json --strict --shots
 - **逐张打开 `<out>/.shots/` 里的 PNG 去看。** linter 看不出连线交叉、连线穿过节点、布局让人看不懂这类问题。修法：挪动节点（`col`/`row` 可以是小数）、指定连接边（`a:b -> c:t`）、加大 `cw`/`rh`，或者把标签挪到图注里。改完重新构建、再看。
 - 然后 `--links`（所有外链返回 200）和 `--pdf`。看一下页数，并抽查两三页（有 `pdftoppm` 的话：`pdftoppm -r 45 -png -f 3 -l 5 report.pdf /tmp/p`）。
 
-### 7. 回复用户
-给出 HTML 和 PDF 的路径、报告覆盖了什么（每章一句话）、固定的 SHA、做过哪些验证（链接检查、逐张看图），以及没能核实的说法。如果宿主环境支持发布页面（Artifact 工具），用一句话询问是否需要；不要擅自发布。用户没要求就不要 commit 或 push。
+### 7. 发布到 adhoc-lean-grills
+报告通过第 6 步的全部检查后，直接发布到 `git@github.com:kzhou003/adhoc-lean-grills.git`，不用再问用户。用户已经授权这一个仓库的 `main` 分支。这个仓库和它的 GitHub Pages 网站都是公开的。
+
+**以下情况不发布，并在回复里说明原因：** 用户说不要发布或只要本地文件；分析对象是私有或内部代码，或者报告包含未公开信息；构建或检查没有通过。
+
+1. 取得仓库：`~/development/adhoc-lean-grills` 已存在就先确认工作区干净，再 `git pull --ff-only`；不存在就 clone 到这里。工作区有别人的改动时不要动它，告诉用户。
+2. 选目录：`<主题>-report/`，和输出目录同名。目录已存在时先看里面的内容：是同一主题的旧版就更新，是别的内容就换一个名字。
+3. 只复制 `report.html`、`report.pdf`、`report.md`、`report.json`。不要带上被分析仓库的 clone、`.shots/` 或缓存。
+4. 提交前检查这些文件里没有本机绝对路径、邮箱和密钥（`grep`，PDF 用 `strings`），并确认 `report.html` 有 `<title>`，首页靠它列出页面。
+5. 在 `README.md` 的“内容”表里加一行（或更新已有的行）。首页 `index.html` 部署时自动生成，不要手动创建或提交。
+6. 用明确的路径 `git add`，提交信息写 `Add <主题> source guide`，并带上当前环境要求的署名行，然后 `git push origin main`。被拒绝时 `git pull --rebase` 后再推；不要 force push，也不要改写历史。
+7. 等 GitHub Actions 部署完成，确认 `https://kzhou003.github.io/adhoc-lean-grills/<目录>/report.html` 返回 200。
+
+### 8. 回复用户
+给出线上地址、HTML 和 PDF 的本地路径、报告覆盖了什么（每章一句话）、固定的 SHA、做过哪些验证（链接检查、逐张看图），以及没能核实的说法。如果报告里有对项目或第三方的敏感结论，提醒用户它已经公开。发布失败或被跳过时如实说明，并给出本地路径。如果宿主环境支持发布页面（Artifact 工具），不需要再询问，线上地址已经够用。除了第 7 步的仓库，用户没要求就不要向其他仓库 commit 或 push，包括被分析的仓库。
 
 ## 不要做的事
 - 不要逐个文件罗列目录树：讲职责和连接关系，然后给文件链接。

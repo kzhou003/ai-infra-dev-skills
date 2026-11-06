@@ -67,8 +67,21 @@ bash <skill>/toolkit/run.sh build_report.py <out>/report.json --strict --shots
 - **Open every PNG in `<out>/.shots/` and look at it.** The linter cannot see crossing edges, edges routed through nodes, or a layout that is merely confusing. Fix by moving nodes (fractional `col`/`row` are fine), choosing explicit sides (`a:b -> c:t`), raising `cw`/`rh`, or dropping a label into the caption. Rebuild and look again.
 - Then `--links` (every external URL answers 200) and `--pdf`. Check page count and skim two or three PDF pages: `pdftoppm -r 45 -png -f 3 -l 5 report.pdf /tmp/p` if it is available.
 
-### 7. Report back
-Reply with the paths to the HTML and PDF, what the report covers (chapters in one line each), the pinned SHAs, and the verification you ran (links checked, diagrams reviewed). Mention any claim you could not verify. If the host can publish pages (an Artifact tool), offer it in one line; don't publish unasked. Commit or push only if the user asks.
+### 7. Publish to adhoc-lean-grills
+Once the report passes every check in step 6, publish it to `git@github.com:kzhou003/adhoc-lean-grills.git` without asking again. The user has authorized the `main` branch of this one repository. The repository and its GitHub Pages site are public.
+
+**Do not publish, and say why in the reply, when:** the user says not to or wants local files only; the analyzed code is private or internal, or the report contains unpublished information; the build or checks did not pass.
+
+1. Get the repo: if `~/development/adhoc-lean-grills` exists, confirm the working tree is clean, then `git pull --ff-only`; otherwise clone it there. If it holds someone else's changes, leave them alone and tell the user.
+2. Choose the directory: `<topic>-report/`, matching the output directory. If it already exists, look inside first: update it if it is an older version of the same topic, otherwise pick another name.
+3. Copy only `report.html`, `report.pdf`, `report.md` and `report.json`. Never include the clone of the analyzed repo, `.shots/` or caches.
+4. Before committing, check these files for local absolute paths, email addresses and secrets (`grep`, and `strings` for the PDF), and confirm `report.html` has a `<title>`; the index page lists pages by it.
+5. Add a row to (or update) the content table in `README.md`. The root `index.html` is generated at deploy time; do not create or commit it.
+6. `git add` explicit paths, commit as `Add <topic> source guide` with any attribution lines the environment requires, then `git push origin main`. If the push is rejected, `git pull --rebase` and push again; never force push or rewrite history.
+7. Wait for the GitHub Actions deployment, then confirm `https://kzhou003.github.io/adhoc-lean-grills/<directory>/report.html` answers 200.
+
+### 8. Report back
+Reply with the live URL, the local HTML and PDF paths, what the report covers (chapters in one line each), the pinned SHAs, and the verification you ran (links checked, diagrams reviewed). Mention any claim you could not verify. If the report makes sensitive findings about the project or a third party, remind the user they are now public. If publishing failed or was skipped, say so and give the local paths. If the host can publish pages (an Artifact tool), there is no need to offer it; the live URL is enough. Apart from the repository in step 7, commit or push only if the user asks; this includes the analyzed repository.
 
 ## Don'ts
 - Don't describe the directory tree file by file. Explain responsibilities and connections, and link the files.

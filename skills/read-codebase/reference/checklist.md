@@ -28,4 +28,5 @@ Go through this before replying. Every item has bitten a previous report.
 ## Output
 - [ ] `report.html` and `report.pdf` exist in the output folder (not inside the analyzed repo).
 - [ ] PDF page count is sane, and a few pages were spot-checked (diagrams render, tables not cut).
-- [ ] Final reply: paths, chapter summary, pinned SHAs, what was verified, anything unverified. No commit or push unless asked.
+- [ ] Published to `adhoc-lean-grills` (or the reason for skipping is stated): only the four report files and one README row, no local paths, email addresses or secrets, live URL answers 200.
+- [ ] Final reply: live URL, local paths, chapter summary, pinned SHAs, what was verified, anything unverified. Apart from `adhoc-lean-grills`, no commit or push unless asked.
