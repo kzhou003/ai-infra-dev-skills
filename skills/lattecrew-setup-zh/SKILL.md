@@ -1,15 +1,15 @@
 ---
 name: lattecrew-setup-zh
-description: 用中文，按 kzhou003/LatteCrew 仓库搭建、扩展、检查或修复一套 LatteCrew：以本地为主的 AI 团队。Claude Code 和 Codex 负责规划和审查，GPU 机器上的本地 Qwen 写代码，图像、语音、视频模型共用同一块 GPU；所有成员通过 Kiro Crew 网关接入 Slack，长任务由 crewd 作业系统运行。当用户想在自己的 GPU 机器上搭一个 AI 团队、把 Kiro Crew 接到另一台机器上的 Claude Code、给本地模型加 Slack bot、用 llama-swap 管理模型、安装 crewd、给现有 LatteCrew 加 bot 或模型，或者问某个部分为什么挂了时使用。英文版用 lattecrew-setup。
+description: 用中文，按 kzhou003/lattecrew 仓库搭建、扩展、检查或修复一套 LatteCrew：以本地为主的 AI 团队。Claude Code 和 Codex 负责规划和审查，GPU 机器上的本地 Qwen 写代码，图像、语音、视频模型共用同一块 GPU；所有成员通过 Kiro Crew 网关接入 Slack，长任务由 crewd 作业系统运行。当用户想在自己的 GPU 机器上搭一个 AI 团队、把 Kiro Crew 接到另一台机器上的 Claude Code、给本地模型加 Slack bot、用 llama-swap 管理模型、安装 crewd、给现有 LatteCrew 加 bot 或模型，或者问某个部分为什么挂了时使用。英文版用 lattecrew-setup。
 ---
 
 # 搭建 LatteCrew
 
-LatteCrew 是一套真实在用的系统，不是模板：[kzhou003/LatteCrew](https://github.com/kzhou003/LatteCrew) 里的每个脚本都在一台 Mac 加一台 RTX 5090 上跑过。你的任务是按阶段把它在用户的机器上复现出来，根据用户的硬件做调整，每个阶段结束都要检查。能自己做的都自己做；只有需要用户亲自操作的步骤（sudo 密码、创建 Slack app、填 token、登录账号）才停下来请用户处理。
+LatteCrew 是一套真实在用的系统，不是模板：[kzhou003/lattecrew](https://github.com/kzhou003/lattecrew) 里的每个脚本都在一台 Mac 加一台 RTX 5090 上跑过。你的任务是按阶段把它在用户的机器上复现出来，根据用户的硬件做调整，每个阶段结束都要检查。能自己做的都自己做；只有需要用户亲自操作的步骤（sudo 密码、创建 Slack app、填 token、登录账号）才停下来请用户处理。
 
 ## 先读
 
-1. 在当前机器上克隆或更新仓库：`git clone https://github.com/kzhou003/LatteCrew.git`（已有就 `git -C LatteCrew pull`）。
+1. 在当前机器上克隆或更新仓库：`git clone https://github.com/kzhou003/lattecrew.git`（已有就 `git -C lattecrew pull`）。
 2. 读 `README.md`、`docs/setup.md`（你要照着执行的操作手册）、`docs/architecture.md`、`docs/security.md`、`docs/troubleshooting.md`。各目录的 README 说明了每个文件的用途。仓库和本 skill 不一致时，以仓库为准。
 3. 运行本 skill 的 `reference/preflight.sh <GPU 主机别名>`。它只读不改，会列出每个组件的状态，已经正常的部分可以跳过。全部完成后再跑一次。
 

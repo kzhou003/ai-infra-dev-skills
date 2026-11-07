@@ -1,15 +1,15 @@
 ---
 name: lattecrew-setup
-description: Set up, extend, check or repair a LatteCrew system from the kzhou003/LatteCrew repo — a local-first AI team where Claude Code and Codex plan and review, a local Qwen model on a GPU machine writes code, and image, speech and video models share the same GPU, all reachable from Slack through Kiro Crew gateways and run by the crewd job runner. Use when the user wants to build an AI team on their own GPU box, connect Kiro Crew to Claude Code on another machine, add Slack bots for local models, serve models behind llama-swap, install crewd, add a bot or model to an existing LatteCrew, or asks why some part of it is down. Writes English; use lattecrew-setup-zh for Chinese.
+description: Set up, extend, check or repair a LatteCrew system from the kzhou003/lattecrew repo — a local-first AI team where Claude Code and Codex plan and review, a local Qwen model on a GPU machine writes code, and image, speech and video models share the same GPU, all reachable from Slack through Kiro Crew gateways and run by the crewd job runner. Use when the user wants to build an AI team on their own GPU box, connect Kiro Crew to Claude Code on another machine, add Slack bots for local models, serve models behind llama-swap, install crewd, add a bot or model to an existing LatteCrew, or asks why some part of it is down. Writes English; use lattecrew-setup-zh for Chinese.
 ---
 
 # Set up LatteCrew
 
-LatteCrew is a working system, not a template: every script in [kzhou003/LatteCrew](https://github.com/kzhou003/LatteCrew) ran on a real Mac + RTX 5090 pair. Your job is to reproduce it on the user's machines, adapted to what they have, phase by phase, with a check after each phase. Do the work yourself; stop only for steps that need the user's hands (sudo passwords, Slack app creation, tokens, logins).
+LatteCrew is a working system, not a template: every script in [kzhou003/lattecrew](https://github.com/kzhou003/lattecrew) ran on a real Mac + RTX 5090 pair. Your job is to reproduce it on the user's machines, adapted to what they have, phase by phase, with a check after each phase. Do the work yourself; stop only for steps that need the user's hands (sudo passwords, Slack app creation, tokens, logins).
 
 ## Read first
 
-1. Clone or update the repo on the machine you run on: `git clone https://github.com/kzhou003/LatteCrew.git` (or `git -C LatteCrew pull`).
+1. Clone or update the repo on the machine you run on: `git clone https://github.com/kzhou003/lattecrew.git` (or `git -C lattecrew pull`).
 2. Read `README.md`, `docs/setup.md` (the runbook you will follow), `docs/architecture.md`, `docs/security.md` and `docs/troubleshooting.md`. The per-directory READMEs say what each file does. Follow the repo when it disagrees with this skill: the repo is the source of truth.
 3. Run `reference/preflight.sh <gpu-host-alias>` from this skill. It is read-only and prints the state of every component, so you can skip what already works. Run it again at the end.
 
