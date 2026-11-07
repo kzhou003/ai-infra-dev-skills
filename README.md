@@ -1,11 +1,12 @@
 # ai-infra-dev-skills
 
-Claude Code skills for learning and contributing to AI-infrastructure codebases, each in an English and a Chinese version:
+Claude Code skills for learning, contributing to and running AI infrastructure, each in an English and a Chinese version:
 
 | Skill | What it produces |
 |---|---|
 | [`read-codebase`](skills/read-codebase/SKILL.md) · [`read-codebase-zh`](skills/read-codebase-zh/SKILL.md) | A **code-wiki style report** of an open-source codebase: one self-contained HTML page plus a PDF. It covers the problem, the requirements / goals / constraints, the architecture, how the components connect and the end-to-end lifecycle, with React-Flow-style diagrams, step-through animations, analogies, the license, how to contribute, and 60–150 source links pinned to a commit and verified at build time. |
 | [`practice-drills`](skills/practice-drills/SKILL.md) · [`practice-drills-zh`](skills/practice-drills-zh/SKILL.md) | A **drills repository** for a domain. It has HTML knowledge pages, one-hour core exercises (`mine/` skeletons + `tests/`), heavily commented `solutions/`, and one explainer + hints page per drill (diagram, analogy, step-through animation, I/O examples, L1/L2/L3 hints, follow-ups linked to the real source), plus a PDF book. Everything runs on CPU with `./check.sh`. |
+| [`lattecrew-setup`](skills/lattecrew-setup/SKILL.md) · [`lattecrew-setup-zh`](skills/lattecrew-setup-zh/SKILL.md) | A **working LatteCrew** on the user's machines, built from [kzhou003/LatteCrew](https://github.com/kzhou003/LatteCrew): a local-first AI team where Claude Code and Codex plan and review, a local Qwen on the GPU writes code, and image, speech and video models share the GPU, reachable from Slack through Kiro Crew and run by the crewd job runner. Claude follows the repo's runbook phase by phase, adapts it to the hardware, stops only for sudo, Slack apps and tokens, and finishes with end-to-end checks and a read-only `preflight.sh` status report. |
 
 The skills come out of building [nano-vllm-omni-drills](https://github.com/kzhou003/nano-vllm-omni-drills), [gpu-kernel-drills](https://kzhou003.github.io/gpu-kernel-drills/), ai-compiler-drills and several codebase reports. Each `SKILL.md` writes down the workflow, the page templates and the quality bar that those projects converged on.
 
@@ -14,7 +15,7 @@ The skills come out of building [nano-vllm-omni-drills](https://github.com/kzhou
 ```bash
 git clone https://github.com/kzhou003/ai-infra-dev-skills.git
 cd ai-infra-dev-skills
-./install.sh              # symlinks all four skills into ~/.claude/skills/
+./install.sh              # symlinks all skills into ~/.claude/skills/
 ./install.sh --copy       # or copy them
 ./install.sh --project    # or install into ./.claude/skills of the current project
 ```
@@ -24,6 +25,8 @@ Then ask Claude Code, for example:
 - "帮我分析理解一下 RSSHub + Folo 的原理和源码，写成 HTML 和 PDF" → `read-codebase-zh`
 - "Make me 12 drills on LLM serving schedulers and KV-cache management, like nano-vllm-omni-drills" → `practice-drills`
 - "做一套 FlashInfer 的练习题，中文" → `practice-drills-zh`
+- "Set up a LatteCrew on my 4090 box and connect it to my Slack" → `lattecrew-setup`
+- "按 LatteCrew 的方式帮我把这台 5090 配成 AI 团队" → `lattecrew-setup-zh`
 
 Requirements: Python 3.10+ and Google Chrome or Chromium (for PDFs and screenshots). `toolkit/run.sh` creates a private venv with `markdown-it-py` on first use. `git` is needed for pinned links to local clones; `gh` / `GITHUB_TOKEN` is optional (it raises the API rate limit when there is no local clone).
 
